@@ -1,0 +1,97 @@
+spring:
+  profiles:
+    include: int
+  datasource:
+    url: jdbc:mariadb://${DATABASE_ADDRESS:testcontainers}/${DATABASE_NAME:faf}?useSSL=false
+    name: ${DATABASE_NAME:faf}
+    username: ${DATABASE_USERNAME:root}
+    password: ${DATABASE_PASSWORD:banana}
+  league-datasource:
+    url: jdbc:mariadb://${LEAGUE_DATABASE_ADDRESS:testcontainers}/${LEAGUE_DATABASE_NAME:faf-league}?useSSL=false
+    name: faf-league
+    username: ${LEAGUE_DATABASE_USERNAME:faf-league-service}
+    password: ${LEAGUE_DATABASE_PASSWORD:banana}
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: ${DATABASE_DDL_AUTO:none}
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    properties:
+      hibernate:
+        current_session_context_class: org.springframework.orm.hibernate5.SpringSessionContext
+  h2:
+    console:
+      enabled: true
+  mail:
+    host: false
+  data:
+    jpa:
+      repositories:
+        bootstrap-mode: DEFAULT
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost
+
+faf-api:
+  jwt:
+    secret-key-path: test-pki-private.key
+    public-key-path: test-pki-public.key
+  map:
+    target-directory: "build/cache/map/maps"
+    directory-preview-path-small: "build/cache/map_previews/small"
+    directory-preview-path-large: "build/cache/map_previews/large"
+    small-previews-url-format: "http://localhost/faf/vault/map_previews/small/%s"
+    large-previews-url-format: "http://localhost/faf/vault/map_previews/large/%s"
+    download-url-format: "http://localhost/faf/vault/maps/%s"
+  avatar:
+    download-url-format: "http://localhost/faf/avatars/%s"
+    target-directory: "build/cache/avatars"
+    allowed-extensions: "png"
+    max-size-bytes: 4096
+    image-width: 40
+    image-height: 20
+  cloudflare:
+    hmac-secret: "banana"
+    hmac-param: "verify"
+  clan:
+    website-url-format: "http://example.com/%s"
+  tutorial:
+    thumbnail-url-format: "http://test.com/faf/tutorials/%s/xyz"
+  user:
+    minimum-days-between-username-change: 30
+  mail:
+    from-email-name: "integration-test@faforever.com"
+    from-email-address: "integration-test@faforever.com"
+  mod:
+    download-url-format: "http://localhost/mod/download-url/%s"
+    preview-url-format: "http://localhost/mod/preview-url/%s"
+  password-reset:
+    password-reset-url-format: "http://localhost:8010/users/claimPasswordResetToken/%s"
+    subject: "Integration test password reset"
+    mail-template-path: "src/inttest/resources/mail/password-reset.html"
+  registration:
+    activation-url-format: "http://localhost/users/activate?token=%s"
+    subject: "Integration test registration"
+    activation-mail-template-path: "src/inttest/resources/mail/account-activation.html"
+    welcome-mail-template-path: "src/inttest/resources/mail/welcome-to-faf.html"
+  steam:
+    realm: "http://localhost"
+    api-key: "banana"
+    link-to-steam-redirect-url-format: "http://localhost:8010/users/linkToSteam?token=%s"
+    steam-password-reset-redirect-url-format: "http://localhost:8010/users/passwordReset?token=%s"
+  replay:
+    download-url-format: "http://localhost/replays/%s"
+  deployment:
+    featured-mods-target-directory: "build/cache/mods"
+    repositories-directory: ""
+    forged-alliance-exe-path: "build/exe/faf"
+    testing-exe-upload-key: banana
+    forged-alliance-beta-exe-path: build/exe/beta
+    forged-alliance-develop-exe-path: build/exe/develop
+  featured-mod:
+    file-url-format: "file://%s/%s"
+  recaptcha:
+    enabled: false

@@ -1,0 +1,272 @@
+buildscript {
+  repositories {
+    mavenCentral()
+  }
+  dependencies {
+    classpath("gradle.plugin.org.kt3k.gradle.plugin:coveralls-gradle-plugin:2.12.0")
+  }
+}
+
+plugins {
+  id "java"
+  id "org.springframework.boot" version "2.7.4"
+  id "io.spring.dependency-management" version "1.0.14.RELEASE"
+  id "idea"
+}
+
+// source: https://github.com/mendhak/Gradle-Travis-Colored-Output/blob/master/ColoredOutput.gradle
+tasks.withType(Test) {
+
+  boolean TRAVIS_FOLDING = project.hasProperty('TRAVIS_FOLDING') ? project.TRAVIS_FOLDING : false
+  String ANSI_BOLD_WHITE = "\u001B[0;1m";
+  String ANSI_RESET = "\u001B[0m";
+  String ANSI_BLACK = "\u001B[30m";
+  String ANSI_RED = "\u001B[31m";
+  String ANSI_GREEN = "\u001B[32m";
+  String ANSI_YELLOW = "\u001B[33m";
+  String ANSI_BLUE = "\u001B[34m";
+  String ANSI_PURPLE = "\u001B[35m";
+  String ANSI_CYAN = "\u001B[36m";
+  String ANSI_WHITE = "\u001B[37m";
+  String CHECK_MARK = "\u2713";
+  String NEUTRAL_FACE = "\u0CA0_\u0CA0";
+  String X_MARK = "\u274C";
+
+  beforeSuite { suite ->
+    if (suite.name.startsWith("Test Run") || suite.name.startsWith("Gradle Worker")) return
+
+    if (suite.parent != null && suite.className != null) {
+      if (TRAVIS_FOLDING) {
+        out.println("travis_fold:start:" + suite.name + "\r");
+      }
+      out.println(ANSI_BOLD_WHITE + suite.name + ANSI_RESET)
+    }
+
+  }
+  afterTest { descriptor, result ->
+    String indent = '    '
+    def indicator = ANSI_WHITE
+
+    if (result.failedTestCount > 0) indicator = ANSI_RED + X_MARK
+    else if (result.skippedTestCount > 0) indicator = ANSI_YELLOW + NEUTRAL_FACE
+    else indicator = ANSI_GREEN + CHECK_MARK
+
+    out.println(indent + indicator + ANSI_RESET + " " + descriptor.name);
+
+    if (result.failedTestCount > 0) {
+      String exceptions = result.getException().toString()
+      out.println(indent + exceptions.split("\\n").join("\n" + indent))
+    }
+  }
+
+  afterSuite { desc, result ->
+    if (desc.parent != null && desc.className != null) {
+
+      if (TRAVIS_FOLDING && result.failedTestCount == 0) {
+        out.println("travis_fold:end:" + desc.name + "\r");
+      }
+      out.println("")
+    }
+
+
+    if (!desc.parent) { // will match the outermost suite
+      def failStyle = ANSI_RED
+      def skipStyle = ANSI_YELLOW
+      def summaryStyle = ANSI_WHITE
+
+      switch (result.resultType) {
+        case TestResult.ResultType.SUCCESS:
+          summaryStyle = ANSI_GREEN;
+          break;
+        case TestResult.ResultType.FAILURE:
+          summaryStyle = ANSI_RED;
+          break;
+      }
+
+      out.println("--------------------------------------------------------------------------");
+      out.println("Results: " + summaryStyle + "${result.resultType}" + ANSI_RESET
+        + " (${result.testCount} tests, "
+        + ANSI_GREEN + "${result.successfulTestCount} passed" + ANSI_RESET
+        + ", " + failStyle + "${result.failedTestCount} failed" + ANSI_RESET
+        + ", " + skipStyle + "${result.skippedTestCount} skipped" + ANSI_RESET
+        + ")");
+      out.println("--------------------------------------------------------------------------");
+    }
+  }
+
+}
+
+group = 'faforever'
+
+sourceCompatibility = 17
+targetCompatibility = 17
+
+bootJar.enabled = true
+jar.enabled = false
+
+repositories {
+  mavenCentral()
+  maven { url "https://jitpack.io" }
+}
+
+compileJava.dependsOn(processResources)
+
+configurations {
+  compile.exclude module: "spring-boot-starter-tomcat"
+  compile.exclude module: "tomcat-jdbc"
+  compile.exclude module: "assertj-core"
+}
+
+idea {
+  module {
+    testSourceDirs += file('src/inttest/java')
+  }
+}
+
+processResources {
+  filesMatching('**/application.yml') {
+    filter {
+      it.replace('#faf-api.version#', project.version.toString())
+    }
+  }
+}
+
+sourceSets {
+  inttest {
+    java.srcDir 'src/inttest/java'
+    resources.srcDir 'src/inttest/resources'
+    compileClasspath += sourceSets.test.compileClasspath
+    runtimeClasspath += sourceSets.test.runtimeClasspath
+  }
+}
+
+configurations {
+  inttestCompile.extendsFrom testCompile
+  inttestRuntime.extendsFrom testRuntime
+}
+
+
+task inttest(type: Test) {
+  group = LifecycleBasePlugin.VERIFICATION_GROUP
+  description = "Runs the integration tests."
+
+  setTestClassesDirs(files(sourceSets.inttest.output))
+  classpath = sourceSets.inttest.runtimeClasspath
+
+  testLogging {
+    events("failed")
+    exceptionFormat = 'full'
+  }
+
+  useJUnitPlatform()
+
+  mustRunAfter test
+}
+
+processInttestResources {
+  duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
+
+// JACOCO & COVERALLS
+apply plugin: 'jacoco'
+apply plugin: 'com.github.kt3k.coveralls'
+jacocoTestReport {
+  executionData.from = files(["$buildDir/jacoco/test.exec", "$buildDir/jacoco/inttest.exec"])
+  reports {
+    xml.required = true
+  }
+}
+
+// CODACY
+
+configurations {
+  codacy
+}
+
+task sendCoverageToCodacy(type: JavaExec, dependsOn: jacocoTestReport) {
+  mainClass = "com.codacy.CodacyCoverageReporter"
+  classpath = configurations.codacy
+  args = ["report", "-l", "Java", "-r", "${buildDir}/reports/jacoco/test/jacocoTestReport.xml"]
+}
+
+configurations.all {
+  // Cache -SNAPSHOT for 60 seconds only
+  resolutionStrategy.cacheChangingModulesFor 60, 'seconds'
+}
+
+build.dependsOn inttest
+
+test {
+  useJUnitPlatform()
+  testLogging {
+    events("passed", "skipped", "failed")
+  }
+}
+
+ext {
+
+}
+
+dependencies {
+  // Spring Boot managed dependencies
+  implementation("org.projectlombok:lombok")
+  annotationProcessor("org.projectlombok:lombok")
+  testAnnotationProcessor("org.projectlombok:lombok")
+  annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
+  testAnnotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
+
+  implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+  implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+  implementation("org.springframework.boot:spring-boot-starter-web")
+  implementation("org.springframework.boot:spring-boot-starter-jetty")
+  implementation("org.springframework.boot:spring-boot-starter-security")
+  implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
+  implementation("org.springframework.boot:spring-boot-starter-mail")
+  implementation("org.springframework.boot:spring-boot-starter-validation")
+  implementation("org.springframework.boot:spring-boot-starter-actuator")
+  implementation("io.micrometer:micrometer-core")
+  implementation("com.github.ben-manes.caffeine:caffeine")
+
+  testImplementation("org.springframework.boot:spring-boot-starter-test")
+  testImplementation("org.springframework.restdocs:spring-restdocs-mockmvc")
+  testImplementation("org.springframework.security:spring-security-test")
+  testImplementation("com.jayway.jsonpath:json-path")
+  testImplementation("com.jayway.jsonpath:json-path-assert")
+
+  runtimeOnly("io.micrometer:micrometer-registry-prometheus")
+  runtimeOnly("org.mariadb.jdbc:mariadb-java-client")
+
+  // Manually managed dependencies
+  def elideVersion = "6.1.8"
+  def springdocVersion = "1.6.11"
+  implementation("com.yahoo.elide:elide-core:${elideVersion}")
+  implementation("com.yahoo.elide:elide-swagger:${elideVersion}")
+  implementation("com.yahoo.elide:elide-datastore-jpa:${elideVersion}")
+  implementation("com.yahoo.elide:elide-datastore-multiplex:${elideVersion}")
+  implementation("org.springdoc:springdoc-openapi-ui:${springdocVersion}")
+  implementation("org.springdoc:springdoc-openapi-security:${springdocVersion}")
+  implementation("com.github.FAForever:faf-java-commons:0e5d22ffff6e4dea81bac494d532627fcca8ebc4")
+  implementation("org.kohsuke:github-api:1.313")
+  implementation("org.eclipse.jgit:org.eclipse.jgit:6.3.0.202209071007-r")
+  implementation("org.jetbrains:annotations:23.0.0")
+  implementation("com.google.guava:guava:31.1-jre")
+  implementation("javax.inject:javax.inject:1")
+  implementation("org.luaj:luaj-jse:3.0.1")
+  implementation("io.github.micheljung:nocatch:2.0")
+  implementation("org.apache.commons:commons-compress:1.21")
+  implementation("org.json:json:20220924")
+  implementation("org.jsoup:jsoup:1.15.3")
+  implementation("com.github.jasminb:jsonapi-converter:0.11")
+  implementation("commons-codec:commons-codec:1.15")
+
+  // Required library for FafTokenService approach (called by nimbus-jwt)
+  runtimeOnly("org.bouncycastle:bcpkix-jdk15on:1.70")
+
+  testImplementation("junit-addons:junit-addons:1.4")
+  testImplementation("org.testcontainers:junit-jupiter:1.17.4")
+  testImplementation("org.testcontainers:mariadb:1.17.4")
+
+  codacy("com.github.codacy:codacy-coverage-reporter:13.10.16")
+}
+
